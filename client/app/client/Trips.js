@@ -1,5 +1,5 @@
 import React from 'react';
-import { ListView, StyleSheet, Text, TouchableHighlight, View } from 'react-native';
+import { ListView, StyleSheet, Text, TouchableHighlight, View, AsyncStorage } from 'react-native';
 
 export default class Trips extends React.Component {
   constructor(props){
@@ -8,22 +8,60 @@ export default class Trips extends React.Component {
     this.ds = new ListView.DataSource({rowHasChanged: (row1, row2) => row1 !== row2});
     this.state = {
       dataSource: this.ds.cloneWithRows(items),
+      connectionType: props.connectionType || null,
     }
     
     this.ws = new WebSocket('http://192.168.100.7:3200/trips');
   }
   
-  componentDidMount() {
-    this.registerSockets()
-    fetch('http://192.168.100.7:3200/trips')
-      .then((data) => {
+  async componentDidMount() {
+    if(this.state.connectionType !== "wifi") {
+      console.log("OFFLINE")
+      await this.fillWithDataOffline()
+    } else {
+      console.log("ONLINE")
+      this.registerSockets()
+      await this.fillWithDataOnline()
+    }
+  }
+  
+  fillWithDataOffline = async () => {
+    try {
+      const value = await AsyncStorage.getItem('booked');
+      if (value !== null && JSON.parse(value).id) {
+        console.log("FOUND:", JSON.parse(value))
         this.setState({
-          dataSource: this.ds.cloneWithRows(JSON.parse(data._bodyText))
+          dataSource: this.ds.cloneWithRows([JSON.parse(value)])
         })
-      }).catch((error) => {
-      console.log("Request failed", error)
-      this.setState({error})
-    })
+      }
+    } catch (error) {
+      console.log(error)
+    }
+  }
+  
+  fillWithDataOnline = async () => {
+    try {
+      const value = await AsyncStorage.getItem('booked');
+      if (value !== null && JSON.parse(value).id){
+        console.log("FOUND:", JSON.parse(value))
+        this.setState({
+          dataSource: this.ds.cloneWithRows([JSON.parse(value)])
+        })
+      } else {
+        await AsyncStorage.removeItem('booked');
+        fetch('http://192.168.100.7:3200/trips')
+          .then((data) => {
+            this.setState({
+              dataSource: this.ds.cloneWithRows(JSON.parse(data._bodyText))
+            })
+          }).catch((error) => {
+          console.log("Request failed", error)
+          this.setState({error})
+        })
+      }
+    } catch (error) {
+      console.log(error)
+    }
   }
   
   registerSockets = () => {
@@ -44,35 +82,89 @@ export default class Trips extends React.Component {
     };
   }
   
+  // showSnackbarMessage = (msg) => {
+  //   return Snackbar.show({
+  //     title: msg,
+  //     // duration: Snackbar.LENGTH_SHORT,
+  //   });
+  // }
+  
   onBook = (id) => {
-    
-    const payload = {id: id}
-    console.log("ID",id, JSON.stringify(payload))
+    console.log("ID",id ,JSON.stringify({id: id}) )
     // const data = new FormData()
     // data.append("json", JSON.stringify(payload))
     return fetch('http://192.168.100.7:3200/book', {
       method: 'post',
-      body: JSON.stringify(payload)
+      body: JSON.stringify({id: id}),
+      headers: new Headers({
+        'Content-Type': 'application/json'
+      })
     }).then(res => res.json())
-      .then(data=>{
+      .then(async (data)=>{
         console.log("RES",data)
+        // this.showSnackbarMessage("The trip was succesfully booked")
+        try {
+          const res = await AsyncStorage.setItem('booked', JSON.stringify(data));
+          console.log("saved", res)
+          await this.fillWithDataOnline()
+        } catch (error) {
+          // Error saving data
+        }
       }).catch(error => {
         console.log("ERR", error)
+        // this.showSnackbarMessage(error)
+      })
+  }
+  
+  onCancelBook = (id) => {
+    return fetch(`http://192.168.100.7:3200/cancel/${id}`, {
+      method: 'delete',
+      headers: new Headers({
+        'Content-Type': 'application/json'
+      })
+    }).then(res => res.json())
+      .then(async (data)=>{
+        console.log("RES",data)
+        // this.showSnackbarMessage("The booking was succesfully canceled")
+        try {
+          const res = await AsyncStorage.removeItem('booked');
+          console.log("removed", res)
+          this.fillWithDataOnline()
+        } catch (error) {
+          // Error saving data
+        }
+      }).catch(error => {
+        console.log("ERR", error)
+        // this.showSnackbarMessage(error)
       })
   }
   
   renderRow = (item) => {
     //<Row note={note} onDelete={this.handleDelete} onEdit={this.handleEdit}/>
+    const {connectionType} = this.state
+    let button = null
+    if(item.status === "Unavailable" && connectionType === 'wifi') {
+      button = <TouchableHighlight
+        style={styles.bookButton}
+        onPress={() => this.onCancelBook(item.id)}
+        underlayColor="#88D4F5">
+        <Text style={styles.buttonText}> Cancel </Text>
+      </TouchableHighlight>
+    } else if(connectionType === 'wifi') {
+      button = <TouchableHighlight
+        style={styles.bookButton}
+        onPress={() => this.onBook(item.id)}
+        underlayColor="#88D4F5">
+        <Text style={styles.buttonText}> Book </Text>
+      </TouchableHighlight>
+    }
+    
+    console.log("ITEM:", item)
     return (
       <View>
         <View style={styles.editContainer}>
           <Text>Name:{item.name} | Type:{item.type} | Rooms:{item.rooms}</Text>
-          <TouchableHighlight
-            style={styles.bookButton}
-            onPress={() => this.onBook(item.id)}
-            underlayColor="#88D4F5">
-            <Text style={styles.buttonText}> Book </Text>
-          </TouchableHighlight>
+          {button}
         </View>
         <View style={styles.separator} />
       </View>
@@ -100,7 +192,7 @@ const styles = StyleSheet.create({
   },
   separator:{
     height: 1,
-    backgroundColor: '#E4E4E4',
+    backgroundColor: 'black',
     flex: 1,
     marginLeft: 15
   },
@@ -118,16 +210,4 @@ const styles = StyleSheet.create({
   rowContainer: {
     padding: 10
   },
-});
-
-
-// mapData = (data) => {
-//   console.log("DAta", data)
-//   return data
-//     ?data.map(item =>{
-//       const {name, rooms, type, id } = item
-//       console.log("IETM",item , name, rooms, type, id)
-//       return { name, rooms, type, id }
-//     })
-//     :null
-// }
+})

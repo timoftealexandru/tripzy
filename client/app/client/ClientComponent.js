@@ -35,12 +35,12 @@ export default class ClientComponent extends React.Component {
 
   renderOnline = () => {
     return (
-      <TabNavigator style={styles.container}>
+      <TabNavigator style={styles.container} >
         <TabNavigator.Item
           selected={this.state.selectedTab === 'home'}
           title="Home"
           onPress={() => this.setState({ selectedTab: 'home' })}>
-          <Trips/>
+          <Trips connectionType={this.state.connectionType}/>
         </TabNavigator.Item>
         <TabNavigator.Item
           selected={this.state.selectedTab === 'profile'}
