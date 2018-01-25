@@ -1,5 +1,6 @@
 import React from 'react';
 import { ListView, StyleSheet, Text, TouchableHighlight, View, AsyncStorage } from 'react-native';
+import Toast, {DURATION} from 'react-native-easy-toast'
 
 export default class Trips extends React.Component {
   constructor(props){
@@ -82,17 +83,13 @@ export default class Trips extends React.Component {
     };
   }
   
-  // showSnackbarMessage = (msg) => {
-  //   return Snackbar.show({
-  //     title: msg,
-  //     // duration: Snackbar.LENGTH_SHORT,
-  //   });
-  // }
+  showToast = (msg) => {
+    this.refs.toast.show(msg, 500);
+  }
   
   onBook = (id) => {
     console.log("ID",id ,JSON.stringify({id: id}) )
-    // const data = new FormData()
-    // data.append("json", JSON.stringify(payload))
+    
     return fetch('http://192.168.100.7:3200/book', {
       method: 'post',
       body: JSON.stringify({id: id}),
@@ -102,17 +99,17 @@ export default class Trips extends React.Component {
     }).then(res => res.json())
       .then(async (data)=>{
         console.log("RES",data)
-        // this.showSnackbarMessage("The trip was succesfully booked")
+        this.showToast("The trip was succesfully booked")
         try {
           const res = await AsyncStorage.setItem('booked', JSON.stringify(data));
           console.log("saved", res)
           await this.fillWithDataOnline()
         } catch (error) {
-          // Error saving data
+          this.showToast(error)
         }
       }).catch(error => {
         console.log("ERR", error)
-        // this.showSnackbarMessage(error)
+        this.showToast(error)
       })
   }
   
@@ -125,17 +122,17 @@ export default class Trips extends React.Component {
     }).then(res => res.json())
       .then(async (data)=>{
         console.log("RES",data)
-        // this.showSnackbarMessage("The booking was succesfully canceled")
+        this.showToast("The booking was succesfully canceled")
         try {
           const res = await AsyncStorage.removeItem('booked');
           console.log("removed", res)
           this.fillWithDataOnline()
         } catch (error) {
-          // Error saving data
+          this.showToast(error)
         }
       }).catch(error => {
         console.log("ERR", error)
-        // this.showSnackbarMessage(error)
+        this.showToast(error)
       })
   }
   
@@ -180,6 +177,7 @@ export default class Trips extends React.Component {
           renderRow={this.renderRow}
           renderHeader={() => <Text>Trips</Text> }
           enableEmpySections={true}/>
+        <Toast ref="toast" position="top" style={{backgroundColor:'blue'}}/>
       </View>
     )
   }
